@@ -44,5 +44,17 @@ pub enum Command {
         /// Number of sessions to show
         #[arg(short, long, default_value_t = 10)]
         limit: i64,
+        
+        /// Number of days to show stats for
+        #[arg(short, long, default_value_t = 7)]
+        days: i64,
+        
+        /// Display type (sessions, daily, summary, types)
+        #[arg(short = 't', long, default_value = "sessions")]
+        display: String,
+        
+        /// Show chart visualization in terminal
+        #[arg(short, long, default_value_t = false)]
+        chart: bool,
     },
 }
