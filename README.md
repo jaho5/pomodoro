@@ -39,7 +39,7 @@ A feature-rich command-line Pomodoro timer with SQLite session tracking and prod
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/pomodoro-cli.git
+   git clone https://github.com/jaho5/pomodoro.git
    cd pomodoro-cli
    ```
 
