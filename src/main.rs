@@ -17,11 +17,13 @@ mod cli;
 mod db;
 mod notification;
 mod pomodoro;
+mod stats_chart;
 
 use cli::{Args, Command};
 use db::Database;
 use notification::get_default_notifier;
 use pomodoro::{Pomodoro, PomodoroCommand, PomodoroConfig, PomodoroState};
+use stats_chart::{display_session_chart, display_daily_chart, display_type_chart};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -30,78 +32,171 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database
     let database = Arc::new(Database::new(args.database.to_str().unwrap_or("pomodoro.db"))?);
     
-    // Initialize notifier
-    let notifier = Arc::new(get_default_notifier());
-    
-    // Create Pomodoro config
-    let config = PomodoroConfig {
-        work_duration: Duration::minutes(args.pomodoro_minutes as i64),
-        short_break_duration: Duration::minutes(args.short_break_minutes as i64),
-        long_break_duration: Duration::minutes(args.long_break_minutes as i64),
-        long_break_after: args.pomodoros_until_long_break,
-    };
-    
-    // Create Pomodoro instance
-    let pomodoro = Arc::new(Mutex::new(Pomodoro::new(
-        config,
-        database.clone(),
-        notifier,
-    )));
-    
     // Check if a command was specified
     match args.command {
-        Some(Command::Start) => {
-            // Start the timer without interactive mode
-            let mut pom = pomodoro.lock().unwrap();
-            pom.start()?;
-            drop(pom);
+        Some(Command::Start) | Some(Command::Stop) | Some(Command::Next) | None => {
+            // Only initialize notifier for timer-related commands
+            let notifier = Arc::new(get_default_notifier());
             
-            run_interactive_mode(pomodoro).await?;
-        }
-        Some(Command::Stop) => {
-            let mut pom = pomodoro.lock().unwrap();
-            pom.stop()?;
-            println!("Pomodoro timer stopped.");
-        }
-        Some(Command::Next) => {
-            let mut pom = pomodoro.lock().unwrap();
-            pom.next()?;
-            println!("Moved to next Pomodoro/break interval.");
-        }
-        Some(Command::Stats { limit }) => {
-            let sessions = database.get_session_stats(limit)?;
+            // Create Pomodoro config
+            let config = PomodoroConfig {
+                work_duration: Duration::minutes(args.pomodoro_minutes as i64),
+                short_break_duration: Duration::minutes(args.short_break_minutes as i64),
+                long_break_duration: Duration::minutes(args.long_break_minutes as i64),
+                long_break_after: args.pomodoros_until_long_break,
+            };
             
-            println!("Recent Pomodoro Sessions:");
-            println!("------------------------");
+            // Create Pomodoro instance
+            let pomodoro = Arc::new(Mutex::new(Pomodoro::new(
+                config,
+                database.clone(),
+                notifier,
+            )));
             
-            if sessions.is_empty() {
-                println!("No sessions recorded yet.");
-            } else {
-                for (i, session) in sessions.iter().enumerate() {
-                    let status = if session.completed { "✅ Completed" } else { "❌ Cancelled" };
-                    let duration_min = session.duration_seconds / 60;
-                    let session_id = session.id.unwrap_or(0);  // Use the ID field
-                    let end_time_str = match session.end_time {
-                        Some(time) => time.format("%Y-%m-%d %H:%M").to_string(),
-                        None => "In progress".to_string(),
-                    };
+            match args.command {
+                Some(Command::Start) => {
+                    // Start the timer without interactive mode
+                    let mut pom = pomodoro.lock().unwrap();
+                    pom.start()?;
+                    drop(pom);
                     
-                    println!(
-                        "{}. ID: {} - {} ({} min) - Started: {} - Ended: {} - {}",
-                        i + 1,
-                        session_id,
-                        session.session_type,
-                        duration_min,
-                        session.start_time.format("%Y-%m-%d %H:%M"),
-                        end_time_str,
-                        status,
-                    );
+                    run_interactive_mode(pomodoro, database.clone()).await?;
                 }
+                Some(Command::Stop) => {
+                    let mut pom = pomodoro.lock().unwrap();
+                    pom.stop()?;
+                    println!("Pomodoro timer stopped.");
+                }
+                Some(Command::Next) => {
+                    let mut pom = pomodoro.lock().unwrap();
+                    pom.next()?;
+                    println!("Moved to next Pomodoro/break interval.");
+                }
+                None => {
+                    // If no command specified, start the interactive mode
+                    run_interactive_mode(pomodoro, database.clone()).await?;
+                }
+                _ => unreachable!(), // This case is already filtered by the match guard
             }
         }
-        None => {
-            // If no command specified, start the interactive mode
-            run_interactive_mode(pomodoro).await?;
+        Some(Command::Stats { limit, days, display, chart }) => {
+            // Handle stats command without initializing notifier
+            match display.as_str() {
+                "sessions" => {
+                    let sessions = database.get_session_stats(limit)?;
+                    
+                    println!("Recent Pomodoro Sessions:");
+                    println!("------------------------");
+                    
+                    if sessions.is_empty() {
+                        println!("No sessions recorded yet.");
+                    } else {
+                        for (i, session) in sessions.iter().enumerate() {
+                            let status = if session.completed { "✅ Completed" } else { "❌ Cancelled" };
+                            let duration_min = session.duration_seconds / 60;
+                            let session_id = session.id.unwrap_or(0);
+                            let end_time_str = match session.end_time {
+                                Some(time) => time.format("%Y-%m-%d %H:%M").to_string(),
+                                None => "In progress".to_string(),
+                            };
+                            
+                            println!(
+                                "{}. ID: {} - {} ({} min) - Started: {} - Ended: {} - {}",
+                                i + 1,
+                                session_id,
+                                session.session_type,
+                                duration_min,
+                                session.start_time.format("%Y-%m-%d %H:%M"),
+                                end_time_str,
+                                status,
+                            );
+                        }
+                    }
+                    
+                    // Display a basic chart if requested
+                    if chart {
+                        display_session_chart(&sessions)?;
+                    }
+                },
+                "daily" => {
+                    let daily_stats = database.get_daily_stats(days)?;
+                    
+                    println!("Daily Pomodoro Stats (Last {} days):", days);
+                    println!("--------------------------------{}", "-".repeat(days.to_string().len()));
+                    
+                    if daily_stats.is_empty() {
+                        println!("No data for the selected period.");
+                    } else {
+                        // Print header
+                        println!("{:<12} {:>12} {:>12} {:>12} {:>15}", 
+                            "Date", "Work Sessions", "Minutes", "Completed", "Completion Rate");
+                        println!("{}", "-".repeat(65));
+                        
+                        // Print rows
+                        for stat in &daily_stats {
+                            println!("{:<12} {:>12} {:>12} {:>12} {:>14.1}%",
+                                stat.date, 
+                                stat.work_sessions,
+                                stat.total_work_minutes,
+                                stat.completed_work_sessions,
+                                stat.completion_rate * 100.0
+                            );
+                        }
+                        
+                        // Display a chart if requested
+                        if chart {
+                            display_daily_chart(&daily_stats)?;
+                        }
+                    }
+                },
+                "summary" => {
+                    let summary = database.get_summary_stats()?;
+                    
+                    println!("Pomodoro Summary Statistics:");
+                    println!("---------------------------");
+                    
+                    println!("Total work sessions:     {}", summary.total_work_sessions);
+                    println!("Total work minutes:      {}", summary.total_work_minutes);
+                    println!("Completed sessions:      {}", summary.completed_sessions);
+                    println!("Completion rate:         {:.1}%", summary.completion_rate * 100.0);
+                    println!("Avg sessions per day:    {:.1}", summary.avg_sessions_per_day);
+                    println!("Longest streak:          {} days", summary.longest_streak_days);
+                    println!("Current streak:          {} days", summary.current_streak_days);
+                },
+                "types" => {
+                    let type_stats = database.get_session_type_stats()?;
+                    
+                    println!("Session Type Statistics:");
+                    println!("-----------------------");
+                    
+                    if type_stats.is_empty() {
+                        println!("No sessions recorded yet.");
+                    } else {
+                        // Print header
+                        println!("{:<12} {:>12} {:>12} {:>15}", 
+                            "Type", "Count", "Minutes", "Completion Rate");
+                        println!("{}", "-".repeat(55));
+                        
+                        // Print rows
+                        for stat in &type_stats {
+                            println!("{:<12} {:>12} {:>12} {:>14.1}%",
+                                stat.session_type, 
+                                stat.count,
+                                stat.total_minutes,
+                                stat.completion_rate * 100.0
+                            );
+                        }
+                        
+                        // Display a chart if requested
+                        if chart {
+                            display_type_chart(&type_stats)?;
+                        }
+                    }
+                },
+                _ => {
+                    println!("Unknown display type '{}'. Valid options are: sessions, daily, summary, types", display);
+                }
+            }
         }
     }
     
@@ -110,6 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run_interactive_mode(
     pomodoro: Arc<Mutex<Pomodoro>>,
+    database: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Set up command channel
     let (cmd_tx, cmd_rx) = mpsc::channel(32);
@@ -160,7 +256,7 @@ async fn run_interactive_mode(
                           
         if should_redraw {
             // Draw the UI
-            draw_ui(&pomodoro)?;
+            draw_ui(&pomodoro, &database)?;
             last_state = Some(current_state);
             last_seconds = Some(current_seconds);
         }
@@ -215,7 +311,7 @@ async fn run_interactive_mode(
     Ok(())
 }
 
-fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
+fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>, database: &Arc<Database>) -> io::Result<()> {
     let mut stdout = io::stdout();
     
     let (state, remaining_seconds, completed_pomodoros) = {
@@ -285,10 +381,60 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
         )
     )?;
     
+    // Try to get and display today's stats
+    if let Ok(daily_stats) = database.get_daily_stats(1) {
+        if !daily_stats.is_empty() {
+            let today = &daily_stats[0];
+            
+            execute!(
+                stdout,
+                cursor::MoveTo(0, 8),
+                style::PrintStyledContent(
+                    "Today's Progress:".bold().with(Color::White)
+                )
+            )?;
+            
+            execute!(
+                stdout,
+                cursor::MoveTo(0, 9),
+                style::PrintStyledContent(
+                    format!(" Work sessions: {}/{}", today.completed_work_sessions, today.work_sessions)
+                        .with(Color::White)
+                )
+            )?;
+            
+            execute!(
+                stdout,
+                cursor::MoveTo(0, 10),
+                style::PrintStyledContent(
+                    format!(" Total work minutes: {}", today.total_work_minutes)
+                        .with(Color::White)
+                )
+            )?;
+            
+            let completion_percent = (today.completion_rate * 100.0).round() as i64;
+            execute!(
+                stdout,
+                cursor::MoveTo(0, 11),
+                style::PrintStyledContent(
+                    format!(" Completion rate: {}%", completion_percent)
+                        .with(Color::White)
+                )
+            )?;
+        }
+    }
+    
+    // Row adjustment based on whether we displayed stats
+    let row_offset = if database.get_daily_stats(1).map(|s| !s.is_empty()).unwrap_or(false) {
+        13 // After the stats
+    } else {
+        8  // Original position
+    };
+    
     // Draw controls
     execute!(
         stdout,
-        cursor::MoveTo(0, 8),
+        cursor::MoveTo(0, row_offset),
         style::PrintStyledContent(
             "Controls:".bold().with(Color::White)
         )
@@ -296,7 +442,7 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
     
     execute!(
         stdout,
-        cursor::MoveTo(0, 9),
+        cursor::MoveTo(0, row_offset + 1),
         style::PrintStyledContent(
             " s - Start/Resume".with(Color::White)
         )
@@ -304,7 +450,7 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
     
     execute!(
         stdout,
-        cursor::MoveTo(0, 10),
+        cursor::MoveTo(0, row_offset + 2),
         style::PrintStyledContent(
             " p - Pause".with(Color::White)
         )
@@ -312,7 +458,7 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
     
     execute!(
         stdout,
-        cursor::MoveTo(0, 11),
+        cursor::MoveTo(0, row_offset + 3),
         style::PrintStyledContent(
             " n - Next".with(Color::White)
         )
@@ -320,7 +466,7 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>) -> io::Result<()> {
     
     execute!(
         stdout,
-        cursor::MoveTo(0, 12),
+        cursor::MoveTo(0, row_offset + 4),
         style::PrintStyledContent(
             " q - Quit".with(Color::White)
         )

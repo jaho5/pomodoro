@@ -229,18 +229,18 @@ impl Pomodoro {
                             if self.completed_pomodoros % self.config.long_break_after == 0 {
                                 self.prev_state = Some(PomodoroState::LongBreak);
                                 self.remaining_seconds = self.config.long_break_duration.num_seconds();
-                                self.notifier.notify("Long Break Ready", "Long break is ready - press 's' to start!");
+                                self.notifier.notify("Long Break Ready", "Long break is ready!");
                             } else {
                                 self.prev_state = Some(PomodoroState::ShortBreak);
                                 self.remaining_seconds = self.config.short_break_duration.num_seconds();
-                                self.notifier.notify("Short Break Ready", "Short break is ready - press 's' to start!");
+                                self.notifier.notify("Short Break Ready", "Short break is ready!");
                             }
                         },
                         PomodoroState::ShortBreak | PomodoroState::LongBreak => {
                             // We were paused in a break, so next would be work
                             self.prev_state = Some(PomodoroState::Work);
                             self.remaining_seconds = self.config.work_duration.num_seconds();
-                            self.notifier.notify("Work Session Ready", "Work session is ready - press 's' to start!");
+                            self.notifier.notify("Work Session Ready", "Work session is ready!");
                         },
                         _ => {}
                     }
@@ -248,7 +248,7 @@ impl Pomodoro {
                     // If we don't know what state we were in, set up for work session
                     self.prev_state = Some(PomodoroState::Work);
                     self.remaining_seconds = self.config.work_duration.num_seconds();
-                    self.notifier.notify("Work Session Ready", "Work session is ready - press 's' to start!");
+                    self.notifier.notify("Work Session Ready", "Work session is ready!");
                 }
             },
             PomodoroState::Idle => {
@@ -256,7 +256,7 @@ impl Pomodoro {
                 self.state = PomodoroState::Paused;
                 self.prev_state = Some(PomodoroState::Work);
                 self.remaining_seconds = self.config.work_duration.num_seconds();
-                self.notifier.notify("Work Session Ready", "Work session is ready - press 's' to start!");
+                self.notifier.notify("Work Session Ready", "Work session is ready!");
             },
         }
         
@@ -301,11 +301,11 @@ impl Pomodoro {
                     if self.completed_pomodoros % self.config.long_break_after == 0 {
                         self.prev_state = Some(PomodoroState::LongBreak);
                         self.remaining_seconds = self.config.long_break_duration.num_seconds();
-                        self.notifier.notify("Long Break Ready", "Long break is ready - press 's' to start!");
+                        self.notifier.notify("Long Break Ready", "Long break is ready!");
                     } else {
                         self.prev_state = Some(PomodoroState::ShortBreak);
                         self.remaining_seconds = self.config.short_break_duration.num_seconds();
-                        self.notifier.notify("Short Break Ready", "Short break is ready - press 's' to start!");
+                        self.notifier.notify("Short Break Ready", "Short break is ready!");
                     }
                 },
                 PomodoroState::ShortBreak | PomodoroState::LongBreak => {
@@ -313,7 +313,7 @@ impl Pomodoro {
                     self.state = PomodoroState::Paused;
                     self.prev_state = Some(PomodoroState::Work);
                     self.remaining_seconds = self.config.work_duration.num_seconds();
-                    self.notifier.notify("Work Session Ready", "Work session is ready - press 's' to start!");
+                    self.notifier.notify("Work Session Ready", "Work session is ready!");
                 },
                 _ => {}
             }
