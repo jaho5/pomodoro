@@ -9,6 +9,7 @@ A feature-rich command-line Pomodoro timer with SQLite session tracking and prod
   - Configurable number of pomodoros before a long break
   - Manual control for start, stop, and next operations
   - Pause/resume functionality that preserves session state
+  - Sound notifications for session transitions
 
 - **Interactive Terminal UI**
   - Color-coded state display
@@ -81,6 +82,9 @@ pomodoro-cli -p 30 -s 10 -l 20 -n 3
   -l, --long-break-minutes <MINUTES>        # Long break duration (default: 15)
   -n, --pomodoros-until-long-break <COUNT>  # Number before long break (default: 4)
 
+# Disable sound notifications
+pomodoro-cli --sound=false
+
 # Specify a different database file
 pomodoro-cli -d mypomodoro.db
 ```
@@ -119,9 +123,37 @@ When in interactive mode, the following keyboard controls are available:
 - `n` - Next interval (skip current)
 - `q` - Quit the application
 
-## Screenshots
+## Sound Notifications
 
-(Screenshots would go here)
+The application includes support for sound notifications when:
+- A work session starts
+- A work session completes
+- A break completes
+
+### Setting Up Sound Files
+
+To set up the sound notifications:
+
+1. Run the included script to download sample sound files:
+   ```
+   ./download_sounds.bat   # On Windows
+   ./download_sounds.sh    # On Linux/MacOS
+   ```
+
+2. The script will create a `sounds` directory with the following files:
+   - `work_done.wav` - Plays when a work session is complete (3+ second audio file)
+   - `break_done.wav` - Plays when a break is complete (3+ second audio file)
+   - `start.wav` - Plays when a work session starts (3+ second audio file)
+
+3. You can customize these sounds by replacing the files in the `sounds` directory with your own audio files (WAV or MP3 format).
+
+### Enabling/Disabling Sounds
+
+Sound notifications are enabled by default. You can disable them using the `--sound` flag:
+
+```
+pomodoro-cli --sound=false
+```
 
 ## Database Schema
 
@@ -146,6 +178,7 @@ CREATE TABLE pomodoro_sessions (
 - [crossterm](https://github.com/crossterm-rs/crossterm) - Terminal manipulation
 - [notify-rust](https://github.com/hoodie/notify-rust) - Desktop notifications
 - [tokio](https://github.com/tokio-rs/tokio) - Async runtime
+- [rodio](https://github.com/RustAudio/rodio) - Audio playback
 
 ## License
 
