@@ -24,6 +24,10 @@ pub struct Args {
     #[arg(short = 'n', long, default_value_t = 4)]
     pub pomodoros_until_long_break: usize,
     
+    /// Enable sound notifications
+    #[arg(long, default_value_t = true)]
+    pub sound: bool,
+    
     #[command(subcommand)]
     pub command: Option<Command>,
 }
