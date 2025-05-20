@@ -1,16 +1,77 @@
 use notify_rust::Notification;
 use std::io::{self, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::ops::Deref;
+
+use crate::sound::SoundPlayer;
 
 pub trait Notifier {
     fn notify(&self, title: &str, message: &str);
+    
+    // Default implementation for notification with sound type
+    fn notify_with_sound(&self, title: &str, message: &str, _sound_type: NotificationSound) {
+        // Default just calls the regular notify method
+        self.notify(title, message);
+    }
+}
+
+// Types of sounds that can be played with notifications
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NotificationSound {
+    WorkDone,
+    BreakDone,
+    Start,
 }
 
 // Implement Notifier for Arc<Notifier> to allow Arc wrapping
 impl<T: Notifier + ?Sized> Notifier for Arc<T> {
     fn notify(&self, title: &str, message: &str) {
         self.deref().notify(title, message)
+    }
+    
+    fn notify_with_sound(&self, title: &str, message: &str, sound_type: NotificationSound) {
+        self.deref().notify_with_sound(title, message, sound_type)
+    }
+}
+
+// Enhanced notifiers with sound support
+pub struct SoundNotifier {
+    sound_player: Arc<Mutex<SoundPlayer>>,
+    base_notifier: Arc<dyn Notifier + Send + Sync>,
+}
+
+impl SoundNotifier {
+    pub fn new(
+        sound_player: Arc<Mutex<SoundPlayer>>,
+        base_notifier: Arc<dyn Notifier + Send + Sync>,
+    ) -> Self {
+        Self {
+            sound_player,
+            base_notifier,
+        }
+    }
+}
+
+impl Notifier for SoundNotifier {
+    fn notify(&self, title: &str, message: &str) {
+        // Forward to base notifier
+        self.base_notifier.notify(title, message);
+    }
+    
+    fn notify_with_sound(&self, title: &str, message: &str, sound_type: NotificationSound) {
+        // First show visual notification
+        self.base_notifier.notify(title, message);
+        
+        // Then play sound based on the notification type
+        if let Ok(player) = self.sound_player.lock() {
+            if player.is_enabled() {
+                let _ = match sound_type {
+                    NotificationSound::WorkDone => player.play_work_done(),
+                    NotificationSound::BreakDone => player.play_break_done(),
+                    NotificationSound::Start => player.play_start(),
+                };
+            }
+        }
     }
 }
 
@@ -51,4 +112,16 @@ pub fn get_default_notifier() -> Arc<dyn Notifier + Send + Sync> {
         Ok(_) => Arc::new(DesktopNotifier),
         Err(_) => Arc::new(TerminalNotifier),
     }
+}
+
+// Get a notifier with sound support
+pub fn get_sound_notifier(sound_enabled: bool) -> Arc<dyn Notifier + Send + Sync> {
+    // Get a base notifier first
+    let base_notifier = get_default_notifier();
+    
+    // Get a sound player
+    let sound_player = crate::sound::get_default_sound_player(sound_enabled);
+    
+    // Create a sound notifier
+    Arc::new(SoundNotifier::new(sound_player, base_notifier))
 }
