@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time;
 
 use crate::db::{Database, DatabaseError};
-use crate::notification::Notifier;
+use crate::notification::{Notifier, NotificationSound};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PomodoroState {
@@ -105,6 +105,13 @@ impl Pomodoro {
             PomodoroState::Paused => {
                 // Resume from paused state using the saved previous state
                 if let Some(prev_state) = self.prev_state {
+                    // If transitioning to a new work session after a break,
+                    // create a new database entry for the new pomodoro
+                    if prev_state == PomodoroState::Work {
+                        return self.transition_to_work();
+                    }
+                    
+                    // For breaks, just resume without creating DB entry
                     self.state = prev_state;
                     
                     // Calculate elapsed time based on the correct duration for the state we're resuming
@@ -143,6 +150,10 @@ impl Pomodoro {
         )?;
         
         self.current_session_id = Some(session_id);
+        
+        // Notify that a work session has started
+        self.notifier.notify_with_sound("Work Session Started", "Focus time has begun!", NotificationSound::Start);
+        
         Ok(())
     }
     
@@ -198,12 +209,12 @@ impl Pomodoro {
                     self.state = PomodoroState::Paused;
                     self.prev_state = Some(PomodoroState::LongBreak);
                     self.remaining_seconds = self.config.long_break_duration.num_seconds();
-                    self.notifier.notify("Long Break Ready", "Long break is ready!");
+                    self.notifier.notify_with_sound("Long Break Ready", "Long break is ready!", NotificationSound::WorkDone);
                 } else {
                     self.state = PomodoroState::Paused;
                     self.prev_state = Some(PomodoroState::ShortBreak);
                     self.remaining_seconds = self.config.short_break_duration.num_seconds();
-                    self.notifier.notify("Short Break Ready", "Short break is ready!");
+                    self.notifier.notify_with_sound("Short Break Ready", "Short break is ready!", NotificationSound::WorkDone);
                 }
             },
             PomodoroState::ShortBreak | PomodoroState::LongBreak => {
@@ -211,7 +222,7 @@ impl Pomodoro {
                 self.state = PomodoroState::Paused;
                 self.prev_state = Some(PomodoroState::Work);
                 self.remaining_seconds = self.config.work_duration.num_seconds();
-                self.notifier.notify("Work Session Ready", "Work session is ready!");
+                self.notifier.notify_with_sound("Work Session Ready", "Work session is ready!", NotificationSound::BreakDone);
             },
             PomodoroState::Paused => {
                 // If paused, determine what the next state should be
@@ -229,18 +240,18 @@ impl Pomodoro {
                             if self.completed_pomodoros % self.config.long_break_after == 0 {
                                 self.prev_state = Some(PomodoroState::LongBreak);
                                 self.remaining_seconds = self.config.long_break_duration.num_seconds();
-                                self.notifier.notify("Long Break Ready", "Long break is ready!");
+                                self.notifier.notify_with_sound("Long Break Ready", "Long break is ready!", NotificationSound::WorkDone);
                             } else {
                                 self.prev_state = Some(PomodoroState::ShortBreak);
                                 self.remaining_seconds = self.config.short_break_duration.num_seconds();
-                                self.notifier.notify("Short Break Ready", "Short break is ready!");
+                                self.notifier.notify_with_sound("Short Break Ready", "Short break is ready!", NotificationSound::WorkDone);
                             }
                         },
                         PomodoroState::ShortBreak | PomodoroState::LongBreak => {
                             // We were paused in a break, so next would be work
                             self.prev_state = Some(PomodoroState::Work);
                             self.remaining_seconds = self.config.work_duration.num_seconds();
-                            self.notifier.notify("Work Session Ready", "Work session is ready!");
+                            self.notifier.notify_with_sound("Work Session Ready", "Work session is ready!", NotificationSound::BreakDone);
                         },
                         _ => {}
                     }
@@ -248,7 +259,7 @@ impl Pomodoro {
                     // If we don't know what state we were in, set up for work session
                     self.prev_state = Some(PomodoroState::Work);
                     self.remaining_seconds = self.config.work_duration.num_seconds();
-                    self.notifier.notify("Work Session Ready", "Work session is ready!");
+                    self.notifier.notify_with_sound("Work Session Ready", "Work session is ready!", NotificationSound::BreakDone);
                 }
             },
             PomodoroState::Idle => {
@@ -256,7 +267,7 @@ impl Pomodoro {
                 self.state = PomodoroState::Paused;
                 self.prev_state = Some(PomodoroState::Work);
                 self.remaining_seconds = self.config.work_duration.num_seconds();
-                self.notifier.notify("Work Session Ready", "Work session is ready!");
+                self.notifier.notify_with_sound("Work Session Ready", "Work session is ready!", NotificationSound::BreakDone);
             },
         }
         
@@ -301,11 +312,11 @@ impl Pomodoro {
                     if self.completed_pomodoros % self.config.long_break_after == 0 {
                         self.prev_state = Some(PomodoroState::LongBreak);
                         self.remaining_seconds = self.config.long_break_duration.num_seconds();
-                        self.notifier.notify("Long Break Ready", "Long break is ready!");
+                        self.notifier.notify_with_sound("Long Break Ready", "Long break is ready!", NotificationSound::WorkDone);
                     } else {
                         self.prev_state = Some(PomodoroState::ShortBreak);
                         self.remaining_seconds = self.config.short_break_duration.num_seconds();
-                        self.notifier.notify("Short Break Ready", "Short break is ready!");
+                        self.notifier.notify_with_sound("Short Break Ready", "Short break is ready!", NotificationSound::WorkDone);
                     }
                 },
                 PomodoroState::ShortBreak | PomodoroState::LongBreak => {
@@ -313,7 +324,7 @@ impl Pomodoro {
                     self.state = PomodoroState::Paused;
                     self.prev_state = Some(PomodoroState::Work);
                     self.remaining_seconds = self.config.work_duration.num_seconds();
-                    self.notifier.notify("Work Session Ready", "Work session is ready!");
+                    self.notifier.notify_with_sound("Work Session Ready", "Work session is ready!", NotificationSound::BreakDone);
                 },
                 _ => {}
             }
