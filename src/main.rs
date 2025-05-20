@@ -17,11 +17,12 @@ mod cli;
 mod db;
 mod notification;
 mod pomodoro;
+mod sound;
 mod stats_chart;
 
 use cli::{Args, Command};
 use db::Database;
-use notification::get_default_notifier;
+use notification::get_sound_notifier;
 use pomodoro::{Pomodoro, PomodoroCommand, PomodoroConfig, PomodoroState};
 use stats_chart::{display_session_chart, display_daily_chart, display_type_chart};
 
@@ -35,8 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check if a command was specified
     match args.command {
         Some(Command::Start) | Some(Command::Stop) | Some(Command::Next) | None => {
-            // Only initialize notifier for timer-related commands
-            let notifier = Arc::new(get_default_notifier());
+            // Initialize notifier with sound support based on user preference
+            let notifier = get_sound_notifier(args.sound);
             
             // Create Pomodoro config
             let config = PomodoroConfig {
