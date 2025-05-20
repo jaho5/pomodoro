@@ -86,7 +86,7 @@ impl Notifier for DesktopNotifier {
             .timeout(5000) // 5 seconds
             .show() 
         {
-            eprintln!("Failed to show notification: {}", e);
+            eprintln!("Failed to show desktop notification: {} - Check if your system supports notifications", e);
         }
     }
 }
@@ -101,16 +101,22 @@ impl Notifier for TerminalNotifier {
         println!("🔔 {}", title);
         println!("   {}", message);
         println!("======================================");
-        io::stdout().flush().unwrap();
+        // Use a more robust approach to handle potential flush errors
+        if let Err(e) = io::stdout().flush() {
+            eprintln!("Failed to flush stdout: {}", e);
+        }
     }
 }
 
 // Detect the best notification system to use
 pub fn get_default_notifier() -> Arc<dyn Notifier + Send + Sync> {
-    // Try to create a desktop notification
-    match Notification::new().summary("Pomodoro").body("Initializing...").show() {
+    // Try to create a desktop notification, with a timeout to avoid hanging
+    match Notification::new().summary("Pomodoro").body("Initializing...").timeout(1000).show() {
         Ok(_) => Arc::new(DesktopNotifier),
-        Err(_) => Arc::new(TerminalNotifier),
+        Err(e) => {
+            eprintln!("Desktop notifications not available ({}), falling back to terminal", e);
+            Arc::new(TerminalNotifier)
+        }
     }
 }
 

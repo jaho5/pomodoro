@@ -280,7 +280,13 @@ async fn run_interactive_mode(
                     match code {
                         KeyCode::Char('q') | KeyCode::Esc => {
                             // Quit
-                            let _ = cmd_tx.send(PomodoroCommand::Shutdown).await;
+                            // Ensure that we properly stop any active session before shutting down
+            let mut pomodoro = pomodoro.lock().unwrap();
+            if pomodoro.get_state() != PomodoroState::Idle && pomodoro.get_state() != PomodoroState::Paused {
+                let _ = pomodoro.stop();
+            }
+            drop(pomodoro); // Release the lock before sending shutdown command
+            let _ = cmd_tx.send(PomodoroCommand::Shutdown).await;
                             break;
                         }
                         KeyCode::Char('s') => {
@@ -303,7 +309,9 @@ async fn run_interactive_mode(
     }
     
     // Wait for the timer task to finish
-    let _ = timer_handle.await;
+    if let Err(e) = timer_handle.await {
+        eprintln!("Error waiting for timer task to complete: {}", e);
+    }
     
     // Clean up terminal
     terminal::disable_raw_mode()?;
@@ -382,7 +390,7 @@ fn draw_ui(pomodoro: &Arc<Mutex<Pomodoro>>, database: &Arc<Database>) -> io::Res
         )
     )?;
     
-    // Try to get and display today's stats
+    // Try to get and display today's stats with better error handling
     if let Ok(daily_stats) = database.get_daily_stats(1) {
         if !daily_stats.is_empty() {
             let today = &daily_stats[0];

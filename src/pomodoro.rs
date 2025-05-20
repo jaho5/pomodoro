@@ -105,13 +105,7 @@ impl Pomodoro {
             PomodoroState::Paused => {
                 // Resume from paused state using the saved previous state
                 if let Some(prev_state) = self.prev_state {
-                    // If transitioning to a new work session after a break,
-                    // create a new database entry for the new pomodoro
-                    if prev_state == PomodoroState::Work {
-                        return self.transition_to_work();
-                    }
-                    
-                    // For breaks, just resume without creating DB entry
+                    // Restore the saved state
                     self.state = prev_state;
                     
                     // Calculate elapsed time based on the correct duration for the state we're resuming
@@ -126,7 +120,7 @@ impl Pomodoro {
                     let elapsed_seconds = duration_seconds - self.remaining_seconds;
                     self.start_time = Some(Local::now() - Duration::seconds(elapsed_seconds));
                     
-                    // Clear the previous state
+                    // Only clear the previous state after successful resume
                     self.prev_state = None;
                     
                     Ok(())
@@ -199,7 +193,8 @@ impl Pomodoro {
             PomodoroState::Work => {
                 // Complete the current work session
                 if let Some(session_id) = self.current_session_id.take() {
-                    self.database.complete_session(session_id)?;
+                    // Use the Result from complete_session directly
+                    self.database.complete_session(session_id)?
                 }
                 
                 self.completed_pomodoros += 1;
@@ -300,9 +295,11 @@ impl Pomodoro {
         if self.remaining_seconds <= 0 {
             match self.state {
                 PomodoroState::Work => {
-                    // Complete the work session
+                    // Complete the work session with proper error handling
                     if let Some(session_id) = self.current_session_id.take() {
-                        let _ = self.database.complete_session(session_id);
+                        if let Err(e) = self.database.complete_session(session_id) {
+                            eprintln!("Failed to complete session {}: {}", session_id, e);
+                        }
                     }
                     
                     self.completed_pomodoros += 1;
