@@ -13,3 +13,4 @@ crossterm = "0.25.0"     # Terminal manipulation
 notify-rust = "4.5.10"   # Desktop notifications
 thiserror = "1.0.38"     # Error handling
 tokio = { version = "1.25.0", features = ["full"] } # Async runtime
+rodio = "0.17.1"        # Audio playback
